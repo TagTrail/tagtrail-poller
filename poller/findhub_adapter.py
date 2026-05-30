@@ -202,34 +202,73 @@ def list_available_trackers() -> list[AvailableTracker]:
         logger.warning("Failed to parse device list: %s", e)
         return []
 
-    # Filter to SPOT devices only (tracker tags). Skip phones (IDENTIFIER_ANDROID)
-    # and other non-tag devices — TagTrail is for tracker tags only.
-    try:
-        DeviceUpdate_pb2 = __import__(
-            "ProtoDecoders.DeviceUpdate_pb2", fromlist=["DeviceUpdate_pb2"]
-        )
-        IDENTIFIER_SPOT = DeviceUpdate_pb2.IDENTIFIER_SPOT
-    except (ImportError, AttributeError):
-        IDENTIFIER_SPOT = None
+    # We want tracker TAGS only (Moto Tag, Chipolo, Pebblebee, ESP32 DIY tags,
+    # AirTag-likes, etc.) — never the user's own gadgets. This needs TWO filters:
+    #
+    #   1. IdentifierInformationType == IDENTIFIER_SPOT, which drops phones that
+    #      come back as IDENTIFIER_ANDROID (with phoneInformation, no deviceReg).
+    #
+    #   2. SpotDeviceType blacklist. The list request already asks Google for
+    #      SPOT_DEVICE only (see GFMT nbe_list_devices.create_device_list_request),
+    #      yet Google still returns the account's phones, headphones, earbuds,
+    #      watches, tablets, laptops and speakers as SPOT devices because they are
+    #      findable items on the network. IDENTIFIER_SPOT alone keeps all of those,
+    #      so we additionally exclude these consumer-electronics device types. We
+    #      intentionally use a *blacklist* of gadgets rather than a whitelist of
+    #      item categories: a real tag is often DEVICE_TYPE_UNKNOWN or whatever the
+    #      user labelled it (keys/bag/bike/car/pet/...), so a whitelist would drop
+    #      legitimate tags. Anything not in the gadget list is treated as a tag.
+    #
+    # Constants are resolved from the already-loaded proto module (not a fragile
+    # re-import) and by name (getattr), so an upstream enum change can't crash us
+    # or silently disable filtering.
+    DeviceUpdate_pb2 = gfmt.get("DeviceUpdate_pb2")
+    IDENTIFIER_SPOT = getattr(DeviceUpdate_pb2, "IDENTIFIER_SPOT", None)
+
+    _NON_TAG_SPOT_TYPE_NAMES = (
+        "DEVICE_TYPE_PHONE",
+        "DEVICE_TYPE_TABLET",
+        "DEVICE_TYPE_LAPTOP",
+        "DEVICE_TYPE_WATCH",
+        "DEVICE_TYPE_HEADPHONES",
+        "DEVICE_TYPE_EARBUDS",
+        "DEVICE_TYPE_SPEAKER",
+    )
+    non_tag_spot_types = {
+        getattr(DeviceUpdate_pb2, n)
+        for n in _NON_TAG_SPOT_TYPE_NAMES
+        if getattr(DeviceUpdate_pb2, n, None) is not None
+    }
 
     out: list[AvailableTracker] = []
     for device in device_list.deviceMetadata:
-        # Only include SPOT (tracker tag) devices
-        if IDENTIFIER_SPOT is not None:
-            try:
-                if device.identifierInformation.type != IDENTIFIER_SPOT:
-                    logger.debug(
-                        "Skipping non-tag device: %s (type=%s)",
-                        device.userDefinedDeviceName,
-                        device.identifierInformation.type,
-                    )
-                    continue
-            except AttributeError:
-                pass
-
-        id_info = device.identifierInformation
-        canonic_ids = id_info.canonicIds.canonicId
         name = device.userDefinedDeviceName
+
+        # Filter 1: must be a SPOT tracker tag, not an Android phone / unknown.
+        if IDENTIFIER_SPOT is not None and (
+            device.identifierInformation.type != IDENTIFIER_SPOT
+        ):
+            logger.info(
+                "Skipping non-tag device %r (identifier type=%s)",
+                str(name),
+                device.identifierInformation.type,
+            )
+            continue
+
+        # Filter 2: exclude SPOT-typed consumer electronics (phone/headphones/...).
+        # Defaults to DEVICE_TYPE_UNKNOWN (0) when unset, which is kept (it's a tag).
+        spot_type = (
+            device.information.deviceRegistration.deviceTypeInformation.deviceType
+        )
+        if spot_type in non_tag_spot_types:
+            logger.info(
+                "Skipping non-tag SPOT device %r (spot device type=%s)",
+                str(name),
+                spot_type,
+            )
+            continue
+
+        canonic_ids = device.identifierInformation.canonicIds.canonicId
         for c in canonic_ids:
             cid = c.id
             if not isinstance(cid, str) or not cid:
