@@ -22,8 +22,9 @@ Go to **[tagtrail.org/setup](https://tagtrail.org/setup)** and follow the
 two steps. It gives you one command to run locally; you paste the two secrets
 it prints, then it creates your repo's secrets for you from the browser.
 
-**Use a secondary google account and share with it the tag you want to track**
-**This is a research project. It comes with no support or guarantees**
+**Use a secondary google account and share with it the tags you want to track!**
+
+**This is a research project. It comes with no support and no guarantees!**
 
 [Terms of Use](https://tagtrail.org/terms)
 [Disclaimer](https://tagtrail.org/terms#disclaimer)
