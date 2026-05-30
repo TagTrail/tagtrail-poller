@@ -1,0 +1,81 @@
+# TagTrail poller — runs every 15 minutes via GitHub Actions.
+#
+# Do NOT fork this repo: GitHub disables scheduled workflows on forks. Instead
+# create your own independent copy with "Use this template" (green button on the
+# repo home page, or https://github.com/TagTrail/tagtrail-poller/generate).
+# A template-generated repo is not a fork, so the cron below runs normally.
+#
+# Then add your secrets, the easy way: open https://tagtrail.org/setup, which
+# sets them for you straight from your browser. Or add them by hand under
+# Settings → Secrets → Actions:
+#   GOOGLE_DRIVE_REFRESH_TOKEN
+#   GFMT_SECRETS_JSON_B64
+#
+# Both are produced by `tagtrail-bootstrap`. See README.md.
+#
+# This workflow installs the poller from the upstream package on each run, so
+# your repo only needs this single file plus the two secrets above — and you get
+# poller updates automatically.
+
+name: tagtrail-poll
+
+on:
+  schedule:
+    - cron: "*/15 * * * *"
+  workflow_dispatch: {}
+
+concurrency:
+  group: tagtrail-poll
+  cancel-in-progress: false
+
+permissions:
+  contents: write
+
+jobs:
+  poll:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    env:
+      # No OAuth client id/secret here — the poller embeds a non-confidential
+      # Desktop-app credential (poller/oauth_client.py). Only set these two
+      # per-account secrets in Settings → Secrets → Actions.
+      GOOGLE_DRIVE_REFRESH_TOKEN:   ${{ secrets.GOOGLE_DRIVE_REFRESH_TOKEN }}
+      GFMT_SECRETS_JSON_B64:        ${{ secrets.GFMT_SECRETS_JSON_B64 }}
+      TAGTRAIL_REQUEST_TIMEOUT_SECONDS: "90"
+      TAGTRAIL_FOLDER: "TagTrail"
+    steps:
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install poller + GoogleFindMyTools
+        # Installed from upstream (not ./poller), so this job does not need the
+        # repo checked out and you always run the latest poller.
+        run: |
+          pip install "git+https://github.com/TagTrail/tagtrail-poller@main#subdirectory=poller"
+          tagtrail-install-gfmt
+
+      - name: Poll once
+        run: tagtrail-poller --jitter-seconds 30
+
+  # GitHub disables scheduled workflows after 60 days of no commits.
+  # This job commits a tiny timestamp file monthly to keep the schedule alive.
+  keepalive:
+    runs-on: ubuntu-latest
+    if: github.event_name == 'schedule'
+    steps:
+      - uses: actions/checkout@v4
+      - name: Keep workflow alive
+        run: |
+          LAST_COMMIT=$(git log -1 --format=%ct)
+          NOW=$(date +%s)
+          DAYS_SINCE=$(( (NOW - LAST_COMMIT) / 86400 ))
+          if [ "$DAYS_SINCE" -ge 50 ]; then
+            date -u > .github/.keepalive
+            git config user.name "github-actions[bot]"
+            git config user.email "github-actions[bot]@users.noreply.github.com"
+            git add .github/.keepalive
+            git commit -m "chore: keepalive to prevent workflow auto-disable"
+            git push
+          fi

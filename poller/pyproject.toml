@@ -1,0 +1,54 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "tagtrail-poller"
+version = "0.1.0"
+description = "TagTrail poller: pulls Google Find Hub tracker fixes and writes them to the user's Google Drive."
+requires-python = ">=3.11"
+license = { text = "MIT" }
+authors = [{ name = "TagTrail" }]
+dependencies = [
+    # Google Drive client and OAuth (poller half of the same Web OAuth client used by the SPA)
+    "google-api-python-client>=2.140.0,<3",
+    "google-auth>=2.34.0,<3",
+    "google-auth-oauthlib>=1.2.0,<2",
+    "google-auth-httplib2>=0.2.0,<1",
+
+    # Scheduler + runtime
+    "APScheduler>=3.10.4,<4",
+    "python-dotenv>=1.0.1,<2",
+    "tenacity>=9.0.0,<10",
+
+    # NOTE: GoogleFindMyTools is NOT a Python package (no setup.py / pyproject.toml).
+    # It is cloned at a pinned commit by `tagtrail-install-gfmt`, and its
+    # transitive Python requirements are installed into the current venv. See
+    # poller/install_gfmt.py for the pinned commit hash.
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.3.0",
+    "ruff>=0.6.0",
+]
+
+[project.scripts]
+tagtrail-poller = "poller.poller:main"
+tagtrail-bootstrap = "poller.bootstrap:main"
+tagtrail-scheduler = "poller.scheduler:main"
+tagtrail-install-gfmt = "poller.install_gfmt:main"
+tagtrail-gfmt-auth = "poller.gfmt_auth:main"
+
+[tool.setuptools]
+# Treat the poller/ folder itself as the package. We re-package by setting the
+# package_dir mapping so `import poller.foo` works.
+package-dir = { "poller" = "." }
+packages = ["poller"]
+
+[tool.ruff]
+target-version = "py311"
+line-length = 100
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "B", "UP"]

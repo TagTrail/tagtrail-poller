@@ -1,0 +1,17 @@
+# Python
+__pycache__/
+*.pyc
+.venv/
+*.egg-info/
+.pytest_cache/
+
+# GFMT checkout (cloned at runtime by tagtrail-install-gfmt)
+vendor/
+
+# Local secrets (NEVER commit these)
+.env
+.env.local
+poller.env
+bootstrap.env
+*.secrets.json
+secrets.json
