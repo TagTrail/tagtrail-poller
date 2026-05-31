@@ -1,3 +1,7 @@
+<p align="center">
+  <img src="logo.svg" alt="TagTrail logo" width="120" height="120">
+</p>
+
 # TagTrail Poller
 
 The background poller for [TagTrail](https://tagtrail.org) — tracks your
